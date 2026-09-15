@@ -1,0 +1,8 @@
+name = "airport-arrival-api"
+main = "worker.js"
+compatibility_date = "2026-09-01"
+
+[vars]
+# Replace with your GitHub Pages origin. Example:
+# ALLOWED_ORIGIN = "https://capstonedrone.github.io"
+ALLOWED_ORIGIN = "*"

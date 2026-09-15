@@ -1,0 +1,496 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="description" content="항공편 출발시간, 체크인, 수하물, 인천공항 예상 출국객 혼잡도 등을 반영해 권장 공항 도착시간을 계산합니다." />
+  <title>공항 몇 시간 전 도착해야 할까?</title>
+  <style>
+    :root{
+      --bg:#f6f7f9; --card:#fff; --text:#172033; --muted:#667085; --line:#e4e7ec;
+      --accent:#2563eb; --accent-soft:#eff6ff; --good:#16794b; --warn:#b35c00; --bad:#b42318;
+    }
+    *{box-sizing:border-box}
+    body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans KR",sans-serif}
+    .wrap{max-width:840px;margin:0 auto;padding:24px 16px 56px}
+    .top{display:flex;justify-content:space-between;gap:16px;align-items:flex-start;margin-bottom:16px}
+    h1{font-size:26px;line-height:1.25;margin:0 0 6px}
+    .sub{color:var(--muted);font-size:14px;line-height:1.6}
+    .version{font-size:12px;color:var(--muted);white-space:nowrap}
+    .notice,.card,.result-card{background:var(--card);border:1px solid var(--line);border-radius:16px}
+    .notice{padding:14px 16px;margin-bottom:16px}
+    .notice strong{display:block;margin-bottom:4px}
+    .card{padding:18px;margin-bottom:14px}
+    .card h2{font-size:17px;margin:0 0 14px}
+    .grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+    label{display:block;font-size:14px;font-weight:650}
+    input,select,button,textarea{font:inherit}
+    input,select{width:100%;margin-top:7px;min-height:46px;border:1px solid var(--line);border-radius:10px;padding:0 12px;background:#fff;color:var(--text);font-size:16px}
+    .check{display:flex;gap:10px;align-items:flex-start;font-weight:500}
+    .check input{width:18px;height:18px;min-height:auto;margin:2px 0 0}
+    .hint{display:block;margin-top:6px;font-size:12px;font-weight:400;color:var(--muted);line-height:1.5}
+    details{border:1px solid var(--line);border-radius:12px;padding:12px 14px;margin-top:14px}
+    summary{cursor:pointer;font-weight:700}
+    .explain-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px}
+    .mini{padding:12px;border-radius:10px;background:#f9fafb;font-size:13px;line-height:1.6}
+    .mini strong{display:block;margin-bottom:4px}
+    .primary{width:100%;min-height:50px;border:0;border-radius:12px;background:var(--accent);color:#fff;font-weight:800;cursor:pointer}
+    .results{margin-top:18px}
+    .source{padding:15px 16px;border-radius:14px;background:var(--accent-soft);border:1px solid #bfdbfe;margin-bottom:14px}
+    .source-row{display:flex;justify-content:space-between;gap:12px;align-items:flex-start}
+    .source .name{font-weight:800}
+    .badge{font-size:12px;padding:5px 8px;border-radius:999px;background:#fff;border:1px solid #bfdbfe;white-space:nowrap}
+    .three{display:grid;grid-template-columns:1fr 1.15fr 1fr;gap:10px}
+    .result-card{padding:16px}
+    .result-card.recommended{border:2px solid var(--accent);background:var(--accent-soft)}
+    .kicker{font-size:12px;color:var(--muted)}
+    .big{font-size:25px;font-weight:850;margin:7px 0 3px}
+    .lead{font-size:13px;color:var(--muted)}
+    .judgement{margin-top:14px;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px;line-height:1.65}
+    .breakdown{margin-top:14px}
+    .row{display:flex;justify-content:space-between;gap:15px;padding:10px 0;border-bottom:1px solid var(--line)}
+    .row:last-child{border-bottom:0}
+    .row .d{font-size:12px;color:var(--muted);margin-top:3px}
+    .row .v{font-weight:800;white-space:nowrap}
+    .share{margin-top:14px;display:flex;gap:8px;flex-wrap:wrap}
+    .secondary{min-height:44px;padding:0 15px;border-radius:10px;border:1px solid var(--line);background:#fff;font-weight:700;cursor:pointer}
+    textarea{width:100%;border:1px solid var(--line);border-radius:10px;padding:10px;margin-top:10px;resize:vertical;display:none}
+    .warnbox{margin-top:14px;border:1px solid #f5d0a9;background:#fff8ed;border-radius:14px;padding:14px;font-size:12px;line-height:1.65;color:#754700}
+    .api-error{color:var(--bad)}
+    @media(max-width:640px){
+      .grid,.three,.explain-grid{grid-template-columns:1fr}
+      .top{display:block}
+      .version{display:block;margin-top:8px}
+    }
+  </style>
+</head>
+<body>
+<div class="wrap">
+  <div class="top">
+    <div>
+      <h1>공항 몇 시간 전 도착해야 할까?</h1>
+      <div class="sub">출국 수속과 인천공항 공식 예상 승객 데이터를 반영해 권장 도착시간을 계산합니다.</div>
+    </div>
+    <div class="version">v00.00.05</div>
+  </div>
+
+  <div class="notice">
+    <strong>출국 전용 계산기입니다.</strong>
+    <div class="sub">한국 공항에서 출국하는 경우만 계산합니다. 입국·환승은 지원하지 않습니다.</div>
+  </div>
+
+  <form id="form">
+    <section class="card">
+      <h2>항공편 정보</h2>
+      <div class="grid">
+        <label>출발 날짜
+          <input id="date" type="date" required />
+        </label>
+        <label>항공편 출발 시각
+          <input id="time" type="time" value="09:00" required />
+        </label>
+        <label>항공편
+          <select id="type">
+            <option value="international">국제선</option>
+            <option value="domestic">국내선</option>
+          </select>
+        </label>
+        <label>출발 공항
+          <select id="airport">
+            <option value="icn">인천국제공항</option>
+            <option value="gmp">김포공항</option>
+            <option value="pus">김해공항</option>
+            <option value="cju">제주공항</option>
+            <option value="other">기타 공항</option>
+          </select>
+        </label>
+      </div>
+    </section>
+
+    <section id="icnBox" class="card">
+      <h2>인천공항 탑승 위치</h2>
+      <div class="grid">
+        <label>터미널 / 탑승구
+          <select id="zone">
+            <option value="t1unknown">T1 · 게이트 아직 모름</option>
+            <option value="t1main">T1 본관 · 1~50번</option>
+            <option value="t1concourse">T1 탑승동 · 101~132번</option>
+            <option value="t2">T2 · 208~290번</option>
+          </select>
+          <span id="zoneHint" class="hint"></span>
+        </label>
+        <label>스마트패스
+          <select id="smartpass">
+            <option value="no">이용 안 함 / 모름</option>
+            <option value="yes">등록했고 이용 예정</option>
+          </select>
+        </label>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>출국 절차</h2>
+      <div class="grid">
+        <label>체크인
+          <select id="checkin">
+            <option value="online">온라인 체크인 완료</option>
+            <option value="airport">공항에서 체크인</option>
+          </select>
+        </label>
+        <label>위탁수하물
+          <select id="bag">
+            <option value="none">없음</option>
+            <option value="yes">있음</option>
+          </select>
+        </label>
+        <label id="immigrationWrap">출국심사
+          <select id="immigration">
+            <option value="auto">자동출입국심사 이용</option>
+            <option value="manual">일반 출국심사</option>
+          </select>
+        </label>
+        <label>보안검색 혼잡도
+          <select id="crowd">
+            <option value="auto">공식 데이터 우선 · 없으면 자동 추정</option>
+            <option value="low">한산할 것으로 예상</option>
+            <option value="normal">보통</option>
+            <option value="busy">혼잡할 것으로 예상</option>
+          </select>
+          <span class="hint">인천공항 오늘·내일은 공식 예상 승객 API를 우선 사용합니다.</span>
+        </label>
+      </div>
+
+      <details>
+        <summary>스마트패스와 자동출입국심사는 뭐가 다른가요?</summary>
+        <div class="explain-grid">
+          <div class="mini">
+            <strong>스마트패스</strong>
+            얼굴정보를 등록해 인천공항 출국장 전용라인 등에서 신원확인을 간소화하는 서비스입니다. 보안검색과 출국심사를 생략하는 기능은 아닙니다.
+          </div>
+          <div class="mini">
+            <strong>자동출입국심사</strong>
+            출입국심사를 자동심사대로 처리하는 절차입니다. 보안검색은 별도로 받아야 합니다.
+          </div>
+        </div>
+      </details>
+    </section>
+
+    <section class="card">
+      <h2>추가 일정과 이동</h2>
+      <div class="grid">
+        <label>공항에서 식사·면세점·환전 등
+          <select id="extra">
+            <option value="none">안 함 · 바로 게이트 이동</option>
+            <option value="light">간단히 약 20분</option>
+            <option value="long">여유 있게 약 40분</option>
+          </select>
+        </label>
+        <label>집·숙소 → 공항 예상 이동시간
+          <input id="transit" type="number" min="0" max="600" step="5" value="60" />
+        </label>
+      </div>
+      <div class="grid" style="margin-top:14px">
+        <label class="check"><input id="unfamiliar" type="checkbox" /> <span>공항 이용이 익숙하지 않음<span class="hint">길 찾기와 절차 확인 여유 추가</span></span></label>
+        <label class="check"><input id="family" type="checkbox" /> <span>어린이·고령자와 동행<span class="hint">이동 속도 여유 추가</span></span></label>
+      </div>
+    </section>
+
+    <button class="primary" type="submit">내 권장 도착시간 계산</button>
+  </form>
+
+  <section id="results" class="results" hidden>
+    <div class="source">
+      <div class="source-row">
+        <div>
+          <div id="sourceName" class="name"></div>
+          <div id="sourceDetail" class="sub" style="margin-top:4px"></div>
+        </div>
+        <div id="sourceBadge" class="badge"></div>
+      </div>
+    </div>
+
+    <div class="three">
+      <div class="result-card">
+        <div class="kicker">빠듯한 기준</div>
+        <div id="tightTime" class="big">—</div>
+        <div id="tightLead" class="lead">—</div>
+      </div>
+      <div class="result-card recommended">
+        <div class="kicker">추천</div>
+        <div id="recTime" class="big">—</div>
+        <div id="recLead" class="lead">—</div>
+      </div>
+      <div class="result-card">
+        <div class="kicker">여유 있게</div>
+        <div id="safeTime" class="big">—</div>
+        <div id="safeLead" class="lead">—</div>
+      </div>
+    </div>
+
+    <div id="judgement" class="judgement"></div>
+
+    <section class="card breakdown">
+      <h2>시간이 어디에 쓰이나요?</h2>
+      <div id="breakdown"></div>
+    </section>
+
+    <section class="card">
+      <div class="kicker">추천 시간 기준 집·숙소 출발</div>
+      <div id="homeTime" class="big">—</div>
+      <div class="hint">입력한 이동시간에 교통 여유 15분을 추가합니다.</div>
+    </section>
+
+    <section class="card">
+      <h2>결과 공유</h2>
+      <div class="sub">동행자에게 권장 공항 도착시간을 보낼 수 있습니다.</div>
+      <div class="share">
+        <button id="shareBtn" class="secondary" type="button">결과 공유하기</button>
+        <button id="showTextBtn" class="secondary" type="button">공유 문구 보기</button>
+      </div>
+      <textarea id="shareText" rows="7" readonly></textarea>
+    </section>
+
+    <div class="warnbox">
+      <strong>혼잡도 안내</strong><br />
+      인천공항 공식 예상 승객 데이터는 해당 시간대의 예상 이용객 수이며 실제 보안검색 대기시간을 보장하지 않습니다.
+      항공편 운항시간·탑승구·출국장 운영·보안검색 대기열 등 당일 상황에 따라 실제 혼잡도와 소요시간은 달라질 수 있습니다.
+      API 데이터를 사용할 수 없는 경우에는 시간대·요일 기반 추정값으로 자동 전환합니다.
+      실제 체크인·수하물 위탁·탑승 마감시간은 이용 항공사의 공식 안내가 우선합니다.
+    </div>
+  </section>
+</div>
+
+<script>
+/*
+  DEPLOY SETUP
+  1) Deploy worker.js to Cloudflare Workers.
+  2) Replace the URL below with your Worker URL.
+*/
+const API_BASE = "https://YOUR-WORKER.YOUR-SUBDOMAIN.workers.dev";
+
+const $ = (id) => document.getElementById(id);
+const el = {
+  form:$("form"), date:$("date"), time:$("time"), type:$("type"), airport:$("airport"),
+  icnBox:$("icnBox"), zone:$("zone"), zoneHint:$("zoneHint"), smartpass:$("smartpass"),
+  checkin:$("checkin"), bag:$("bag"), immigration:$("immigration"), immigrationWrap:$("immigrationWrap"),
+  crowd:$("crowd"), extra:$("extra"), transit:$("transit"), unfamiliar:$("unfamiliar"), family:$("family"),
+  results:$("results"), sourceName:$("sourceName"), sourceDetail:$("sourceDetail"), sourceBadge:$("sourceBadge"),
+  tightTime:$("tightTime"), tightLead:$("tightLead"), recTime:$("recTime"), recLead:$("recLead"),
+  safeTime:$("safeTime"), safeLead:$("safeLead"), judgement:$("judgement"), breakdown:$("breakdown"),
+  homeTime:$("homeTime"), shareBtn:$("shareBtn"), showTextBtn:$("showTextBtn"), shareText:$("shareText")
+};
+
+const pad = n => String(n).padStart(2,"0");
+const kstParts = () => {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone:"Asia/Seoul", year:"numeric", month:"2-digit", day:"2-digit"
+  }).formatToParts(new Date()).reduce((a,p)=>(a[p.type]=p.value,a),{});
+  return {y:+parts.year,m:+parts.month,d:+parts.day};
+};
+const kp = kstParts();
+el.date.value = `${kp.y}-${pad(kp.m)}-${pad(kp.d)}`;
+
+function parseLocalFlight() {
+  const [y,m,d] = el.date.value.split("-").map(Number);
+  const [hh,mm] = el.time.value.split(":").map(Number);
+  return new Date(y,m-1,d,hh,mm,0,0);
+}
+function fmt(dt, flight) {
+  const same = dt.toDateString() === flight.toDateString();
+  const prev = new Date(flight); prev.setDate(prev.getDate()-1);
+  const p = same ? "당일" : dt.toDateString()===prev.toDateString() ? "전날" : `${dt.getMonth()+1}/${dt.getDate()}`;
+  return `${p} ${pad(dt.getHours())}:${pad(dt.getMinutes())}`;
+}
+function hm(dt){ return `${pad(dt.getHours())}:${pad(dt.getMinutes())}`; }
+function leadText(m){
+  const h=Math.floor(m/60), r=m%60;
+  return h ? (r ? `${h}시간 ${r}분 전` : `${h}시간 전`) : `${r}분 전`;
+}
+function dateDiffFromKstToday(dateStr){
+  const [y,m,d]=dateStr.split("-").map(Number);
+  const a=Date.UTC(kp.y,kp.m-1,kp.d), b=Date.UTC(y,m-1,d);
+  return Math.round((b-a)/86400000);
+}
+function heuristicCrowd(flight, intl){
+  const securityAt = new Date(flight.getTime()-(intl?90:45)*60000);
+  const h=securityAt.getHours()+securityAt.getMinutes()/60;
+  const weekend=[0,6].includes(flight.getDay());
+  let mins=24, label="보통", reason="일반 시간대 추정";
+  if(h>=5&&h<10){mins=36;label="다소 혼잡";reason="오전 출국 집중 시간대";}
+  else if(h>=16&&h<19.5){mins=32;label="다소 혼잡";reason="오후·저녁 출국 집중 시간대";}
+  else if(h>=22||h<5){mins=15;label="한산";reason="심야·새벽 시간대";}
+  if(weekend){mins+=5;reason+=" + 주말 가중치";}
+  return {mins,label,reason,securityAt,source:"fallback"};
+}
+function crowdFromPassengers(passengers, securityAt){
+  let label="원활", mins=20, grade="NORMAL";
+  if(passengers>=7000){label="매우 혼잡";mins=50;grade="RED";}
+  else if(passengers>=6500){label="혼잡";mins=42;grade="ORANGE";}
+  else if(passengers>=6000){label="다소 혼잡";mins=34;grade="YELLOW";}
+  else if(passengers>=5500){label="약간 혼잡";mins=27;grade="BLUE";}
+  return {mins,label,securityAt,grade,passengers,source:"official"};
+}
+async function fetchOfficialForecast(flight, zone, intl){
+  if(!intl || el.airport.value!=="icn" || el.crowd.value!=="auto") return null;
+  const diff=dateDiffFromKstToday(el.date.value);
+  if(diff<0 || diff>1) return null;
+  if(API_BASE.includes("YOUR-WORKER")) return null;
+
+  const selectdate=String(diff);
+  const securityAt=new Date(flight.getTime()-90*60000);
+  const hour=securityAt.getHours();
+  const res=await fetch(`${API_BASE}/forecast?selectdate=${selectdate}`, {headers:{"Accept":"application/json"}});
+  if(!res.ok) throw new Error(`API ${res.status}`);
+  const data=await res.json();
+  const row=(data.rows||[]).find(r => Number(String(r.slot||"").slice(0,2))===hour);
+  if(!row) throw new Error("해당 시간대 데이터 없음");
+  const terminal = zone==="t2" ? "T2" : "T1";
+  const passengers = terminal==="T2" ? Number(row.t2Departures||0) : Number(row.t1Departures||0);
+  return {...crowdFromPassengers(passengers,securityAt), terminal, fetchedAt:data.fetchedAt, slot:row.slot};
+}
+function syncUI(){
+  const isIcn=el.airport.value==="icn";
+  el.icnBox.style.display=isIcn?"block":"none";
+  el.immigrationWrap.style.display=el.type.value==="international"?"block":"none";
+  const z=el.zone.value;
+  el.zoneHint.textContent =
+    z==="t1concourse" ? "101~132번 탑승구는 셔틀트레인으로 탑승동까지 추가 이동합니다." :
+    z==="t1main" ? "1~50번 게이트는 T1 본관에서 이동합니다." :
+    z==="t2" ? "208~290번 게이트는 T2입니다. 게이트 위치에 따라 내부 이동시간 차이가 큽니다." :
+    "게이트 미정이면 탑승동 배정 가능성을 일부 반영합니다.";
+}
+function addBreakdown(name, mins, desc){
+  const row=document.createElement("div"); row.className="row";
+  row.innerHTML=`<div><strong>${name}</strong><div class="d">${desc}</div></div><div class="v">약 ${mins}분</div>`;
+  el.breakdown.appendChild(row);
+}
+let lastShare="";
+
+async function calculate(){
+  syncUI();
+  const flight=parseLocalFlight();
+  const intl=el.type.value==="international";
+  let crowdInfo=null, apiError=null;
+
+  if(el.crowd.value==="auto"){
+    try{ crowdInfo=await fetchOfficialForecast(flight,el.zone.value,intl); }
+    catch(err){ apiError=err; }
+  }
+  if(!crowdInfo){
+    const h=heuristicCrowd(flight,intl);
+    if(el.crowd.value==="low") Object.assign(h,{mins:15,label:"한산",reason:"사용자 직접 선택"});
+    if(el.crowd.value==="normal") Object.assign(h,{mins:25,label:"보통",reason:"사용자 직접 선택"});
+    if(el.crowd.value==="busy") Object.assign(h,{mins:45,label:"혼잡",reason:"사용자 직접 선택"});
+    crowdInfo=h;
+  }
+
+  let counter=0;
+  if(el.checkin.value==="airport"&&el.bag.value==="yes") counter=crowdInfo.mins>=42?50:crowdInfo.mins<=20?20:35;
+  else if(el.checkin.value==="airport") counter=crowdInfo.mins>=42?38:crowdInfo.mins<=20?15:25;
+  else if(el.bag.value==="yes") counter=crowdInfo.mins>=42?32:crowdInfo.mins<=20?10:20;
+
+  let entry=5;
+  if(el.airport.value==="icn"&&el.smartpass.value==="yes") entry=3;
+  else if(crowdInfo.mins>=42) entry=8;
+
+  let immigration=0;
+  if(intl) immigration=el.immigration.value==="auto"?5:(crowdInfo.mins>=42?15:10);
+
+  let gate=10, gateDesc="일반적인 터미널 내부 이동";
+  if(el.airport.value==="icn"){
+    if(el.zone.value==="t1main"){gate=10;gateDesc="T1 본관 게이트 이동";}
+    else if(el.zone.value==="t1unknown"){gate=15;gateDesc="T1 게이트 미정 · 탑승동 가능성 일부 반영";}
+    else if(el.zone.value==="t1concourse"){gate=25;gateDesc="T1 탑승동 · 셔틀트레인 및 추가 이동";}
+    else {gate=15;gateDesc="T2 내부 장거리 이동 가능성 반영";}
+  }else if(["gmp","pus"].includes(el.airport.value)) gate=8;
+
+  const extra=el.extra.value==="none"?0:el.extra.value==="light"?20:40;
+  let misc=5;
+  if(el.unfamiliar.checked) misc+=10;
+  if(el.family.checked) misc+=15;
+  const boarding=intl?35:25;
+  const risk=crowdInfo.mins>=42?20:crowdInfo.mins<=20?8:15;
+
+  const process=counter+entry+crowdInfo.mins+immigration+gate+extra+misc;
+  const tight=process+boarding;
+  const recommended=tight+risk;
+  const safe=recommended+30;
+
+  const tightDt=new Date(flight.getTime()-tight*60000);
+  const recDt=new Date(flight.getTime()-recommended*60000);
+  const safeDt=new Date(flight.getTime()-safe*60000);
+
+  el.tightTime.textContent=fmt(tightDt,flight); el.tightLead.textContent=leadText(tight);
+  el.recTime.textContent=fmt(recDt,flight); el.recLead.textContent=leadText(recommended);
+  el.safeTime.textContent=fmt(safeDt,flight); el.safeLead.textContent=leadText(safe);
+
+  if(crowdInfo.source==="official"){
+    el.sourceName.textContent=`인천공항 공식 예상 승객 데이터 · ${crowdInfo.terminal}`;
+    el.sourceBadge.textContent="공식 API";
+    el.sourceDetail.textContent=`예상 보안검색 진입 ${hm(crowdInfo.securityAt)} · ${crowdInfo.slot} 예상 출국객 ${crowdInfo.passengers.toLocaleString()}명 · 혼잡 판단 ${crowdInfo.label}`;
+  }else{
+    el.sourceName.textContent="시간대·요일 기반 자체 추정";
+    el.sourceBadge.textContent="Fallback";
+    const err=apiError?` · 공식 API 사용 불가(${apiError.message})`:"";
+    el.sourceDetail.textContent=`예상 보안검색 진입 ${hm(crowdInfo.securityAt)} · ${crowdInfo.reason}${err}`;
+  }
+
+  const fastCase=intl&&el.checkin.value==="online"&&el.bag.value==="none"&&el.immigration.value==="auto"&&el.extra.value==="none"&&crowdInfo.mins<=20;
+  if(fastCase&&tight<=65&&!(el.airport.value==="icn"&&el.zone.value==="t1concourse")){
+    el.judgement.innerHTML="<strong>조건이 모두 맞으면 약 1시간 전 도착도 가능할 수 있습니다.</strong><br>다만 보안검색이 실제로 한산하고 동선이 지연되지 않는다는 전제의 빠듯한 기준입니다. 추천시간은 예상외 대기까지 반영해 더 넉넉하게 잡습니다.";
+  }else if(el.airport.value==="icn"&&el.zone.value==="t1concourse"){
+    el.judgement.innerHTML=`<strong>T1 탑승동 이동을 반영해 ${leadText(recommended)} 도착을 권장합니다.</strong><br>101~132번 게이트는 출국 절차 이후 셔틀트레인으로 추가 이동해야 합니다.`;
+  }else{
+    el.judgement.innerHTML=`<strong>현재 조건에서는 ${leadText(recommended)} 도착을 권장합니다.</strong><br>빠듯한 기준은 절차가 예상대로 진행될 때의 하한선이며, 추천시간은 혼잡 변동을 흡수하도록 추가 여유를 둡니다.`;
+  }
+
+  el.breakdown.innerHTML="";
+  if(counter) addBreakdown("체크인·수하물",counter,el.checkin.value==="online"?"온라인 체크인 후 수하물 위탁":"공항 카운터 이용");
+  addBreakdown("출국장 진입",entry,el.airport.value==="icn"&&el.smartpass.value==="yes"?"스마트패스 이용 반영":"일반 출국장 진입");
+  addBreakdown("보안검색",crowdInfo.mins,crowdInfo.source==="official"?"공식 예상 출국객 수를 자체 버퍼 정책에 반영":"시간대·요일 기반 추정");
+  if(intl) addBreakdown("출국심사",immigration,el.immigration.value==="auto"?"자동출입국심사":"일반 출국심사");
+  addBreakdown("탑승구 이동",gate,gateDesc);
+  if(extra) addBreakdown("식사·쇼핑 등",extra,"선택한 공항 내 추가 활동");
+  addBreakdown("기타 이동 여유",misc,"길 찾기와 개인 조건");
+  addBreakdown("탑승 전 게이트 여유",boarding,"출발 전 게이트 도착 여유");
+  addBreakdown("예상외 지연 버퍼",risk,"혼잡도에 따른 추가 여유");
+
+  let transit=Number(el.transit.value)||0;
+  transit=Math.max(0,Math.min(600,transit));
+  const homeDt=new Date(recDt.getTime()-(transit+15)*60000);
+  el.homeTime.textContent=fmt(homeDt,flight);
+
+  const airportName=el.airport.options[el.airport.selectedIndex].text;
+  lastShare=`✈️ 공항 도착시간 계산 결과
+${airportName} / ${intl?"국제선":"국내선"} / 출발 ${hm(flight)}
+
+빠듯한 기준: ${fmt(tightDt,flight)} (${leadText(tight)})
+추천 도착: ${fmt(recDt,flight)} (${leadText(recommended)})
+여유 있게: ${fmt(safeDt,flight)} (${leadText(safe)})
+집·숙소 출발 추천: ${fmt(homeDt,flight)}
+혼잡도: ${crowdInfo.label} (${crowdInfo.source==="official"?"인천공항 공식 예상 승객 데이터":"추정값"})
+
+※ 실제 공항 상황 및 항공사 마감시간에 따라 달라질 수 있습니다.`;
+  el.shareText.value=lastShare;
+  el.results.hidden=false;
+  el.results.scrollIntoView({behavior:"smooth",block:"start"});
+}
+
+el.form.addEventListener("submit", async ev => {
+  ev.preventDefault();
+  const btn=el.form.querySelector(".primary");
+  const old=btn.textContent; btn.disabled=true; btn.textContent="계산 중…";
+  try{ await calculate(); } finally { btn.disabled=false; btn.textContent=old; }
+});
+[el.airport,el.zone,el.type].forEach(x=>x.addEventListener("change",syncUI));
+el.shareBtn.addEventListener("click",async()=>{
+  if(navigator.share){
+    try{await navigator.share({title:"공항 도착시간 계산 결과",text:lastShare});return;}catch(e){if(e.name==="AbortError")return;}
+  }
+  el.shareText.style.display="block"; el.shareText.select();
+});
+el.showTextBtn.addEventListener("click",()=>{el.shareText.style.display="block";});
+syncUI();
+</script>
+</body>
+</html>
