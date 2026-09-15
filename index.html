@@ -71,7 +71,7 @@
       <h1>공항 몇 시간 전 도착해야 할까?</h1>
       <div class="sub">출국 수속, 공항 동선, 혼잡 조건을 반영해 권장 도착시간을 계산합니다.</div>
     </div>
-    <div class="version">v00.00.06</div>
+    <div class="version">v00.00.07</div>
   </div>
 
   <div class="notice">
@@ -310,6 +310,28 @@ function fmt(dt, flight) {
   return `${p} ${pad(dt.getHours())}:${pad(dt.getMinutes())}`;
 }
 function hm(dt){ return `${pad(dt.getHours())}:${pad(dt.getMinutes())}`; }
+
+function getDocumentHeight(){
+  return Math.max(
+    document.body ? document.body.scrollHeight : 0,
+    document.body ? document.body.offsetHeight : 0,
+    document.documentElement ? document.documentElement.scrollHeight : 0,
+    document.documentElement ? document.documentElement.offsetHeight : 0
+  );
+}
+let lastPostedHeight = 0;
+function postHeight(force=false){
+  if(window.parent === window) return;
+  const height = Math.max(900, getDocumentHeight() + 24);
+  if(!force && Math.abs(height - lastPostedHeight) < 8) return;
+  lastPostedHeight = height;
+  window.parent.postMessage({
+    source: "airport-arrival-calculator",
+    type: "resize",
+    height
+  }, "*");
+}
+
 function leadText(m){
   const h=Math.floor(m/60), r=m%60;
   return h ? (r ? `${h}시간 ${r}분 전` : `${h}시간 전`) : `${r}분 전`;
@@ -357,6 +379,7 @@ async function fetchOfficialForecast(flight, zone, intl){
   return {...crowdFromPassengers(passengers,securityAt), terminal, fetchedAt:data.fetchedAt, slot:row.slot};
 }
 function syncUI(){
+  requestAnimationFrame(() => postHeight());
   const isIcn=el.airport.value==="icn";
   if(el.crowdHint){
     if(apiConfigured()){
@@ -493,6 +516,7 @@ ${airportName} / ${intl?"국제선":"국내선"} / 출발 ${hm(flight)}
 ※ 실제 공항 상황 및 항공사 마감시간에 따라 달라질 수 있습니다.`;
   el.shareText.value=lastShare;
   el.results.hidden=false;
+  requestAnimationFrame(() => postHeight(true));
   el.results.scrollIntoView({behavior:"smooth",block:"start"});
 }
 
@@ -510,7 +534,14 @@ el.shareBtn.addEventListener("click",async()=>{
   el.shareText.style.display="block"; el.shareText.select();
 });
 el.showTextBtn.addEventListener("click",()=>{el.shareText.style.display="block";});
+
+window.addEventListener("load", () => postHeight(true));
+window.addEventListener("resize", () => postHeight());
+document.addEventListener("input", () => postHeight());
+const resizeObserver = new ResizeObserver(() => postHeight());
+resizeObserver.observe(document.body);
 syncUI();
+requestAnimationFrame(() => postHeight(true));
 </script>
 </body>
 </html>

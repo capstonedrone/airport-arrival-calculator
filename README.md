@@ -1,4 +1,4 @@
-# 공항 몇 시간 전 도착해야 할까? — v00.00.06
+# 공항 몇 시간 전 도착해야 할까? — v00.00.07
 
 ## 이번 버전 핵심
 - 여행 유형 선택 제거: **출국 전용**으로 고정
@@ -119,4 +119,51 @@ wrangler deploy
 - 실시간 API는 현재 시점에 가까운 출국에서만 의미가 큼
 - 실제 서비스키 승인 후 응답 구조를 live-call로 확인한 뒤 넣는 것이 안전함
 
-즉 v00.00.06는 **공식 미래/당일 예고 API를 실제 연동한 첫 버전**입니다.
+즉 v00.00.07는 **공식 미래/당일 예고 API를 실제 연동한 첫 버전**입니다.
+
+
+## 티스토리 자동 높이 조절(iframe + postMessage)
+이번 버전부터 `index.html`이 자신의 높이를 부모 페이지에 `postMessage`로 전송합니다.
+
+전송 메시지 형식:
+```js
+{
+  source: "airport-arrival-calculator",
+  type: "resize",
+  height: <number>
+}
+```
+
+티스토리 HTML 모드에는 아래 코드를 넣으면 됩니다.
+
+```html
+<div style="width:100%; margin:20px 0;">
+  <iframe
+    id="airportArrivalCalculatorFrame"
+    src="https://capstonedrone.github.io/airport-arrival-calculator/"
+    title="공항 도착시간 계산기"
+    style="width:100%; min-height:900px; border:0; display:block;"
+    loading="lazy">
+  </iframe>
+</div>
+
+<script>
+(function () {
+  const iframe = document.getElementById('airportArrivalCalculatorFrame');
+  if (!iframe) return;
+
+  window.addEventListener('message', function (event) {
+    if (event.origin !== 'https://capstonedrone.github.io') return;
+    const data = event.data;
+    if (!data || data.source !== 'airport-arrival-calculator' || data.type !== 'resize') return;
+    if (typeof data.height !== 'number') return;
+
+    iframe.style.height = Math.max(900, data.height) + 'px';
+  });
+})();
+</script>
+```
+
+- `event.origin`은 GitHub Pages 도메인에 맞게 유지하세요.
+- `src`가 바뀌면 해당 도메인에 맞춰 `event.origin`도 함께 바꿔야 합니다.
+- 초기 로딩 중에는 `min-height:900px`가 기본 높이 역할을 합니다.
