@@ -3,8 +3,8 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <meta name="description" content="국제선·국내선 비행기 출발 몇 시간 전에 공항에 도착해야 할지 계산해보세요. 체크인, 위탁수하물, 인천공항 T1·T2, 탑승동, 혼잡도를 반영해 권장 도착시간을 계산합니다.">
-  <title>공항 몇 시간 전 도착? 출국시간 계산기 | 인천공항 혼잡도 반영</title>
+  <meta name="description" content="항공편 출발시간, 체크인, 수하물, 인천공항 예상 출국객 혼잡도 등을 반영해 권장 공항 도착시간을 계산합니다." />
+  <title>공항 몇 시간 전 도착해야 할까?</title>
   <style>
     :root{
       --bg:#f6f7f9; --card:#fff; --text:#172033; --muted:#667085; --line:#e4e7ec;
@@ -69,9 +69,9 @@
   <div class="top">
     <div>
       <h1>공항 몇 시간 전 도착해야 할까?</h1>
-      <div class="sub">출국 수속과 인천공항 공식 예상 승객 데이터를 반영해 권장 도착시간을 계산합니다.</div>
+      <div class="sub">출국 수속, 공항 동선, 혼잡 조건을 반영해 권장 도착시간을 계산합니다.</div>
     </div>
-    <div class="version">v00.00.05</div>
+    <div class="version">v00.00.06</div>
   </div>
 
   <div class="notice">
@@ -151,12 +151,12 @@
         </label>
         <label>보안검색 혼잡도
           <select id="crowd">
-            <option value="auto">공식 데이터 우선 · 없으면 자동 추정</option>
+            <option value="auto">자동 판단</option>
             <option value="low">한산할 것으로 예상</option>
             <option value="normal">보통</option>
             <option value="busy">혼잡할 것으로 예상</option>
           </select>
-          <span class="hint">인천공항 오늘·내일은 공식 예상 승객 API를 우선 사용합니다.</span>
+          <span id="crowdHint" class="hint">API가 실제 연결되어 있으면 인천공항 공식 예상 승객 데이터를 사용하고, 그렇지 않으면 시간대·요일 기반 자체 추정값을 사용합니다.</span>
         </label>
       </div>
 
@@ -252,9 +252,9 @@
 
     <div class="warnbox">
       <strong>혼잡도 안내</strong><br />
-      인천공항 공식 예상 승객 데이터는 해당 시간대의 예상 이용객 수이며 실제 보안검색 대기시간을 보장하지 않습니다.
-      항공편 운항시간·탑승구·출국장 운영·보안검색 대기열 등 당일 상황에 따라 실제 혼잡도와 소요시간은 달라질 수 있습니다.
-      API 데이터를 사용할 수 없는 경우에는 시간대·요일 기반 추정값으로 자동 전환합니다.
+      이 계산기는 데이터 소스를 결과에 명확히 표시합니다.
+      인천공항 공식 API가 실제 연결되어 정상 응답한 경우에만 ‘공식 API’라고 표시하며, 그 외에는 시간대·요일 기반 ‘자체 추정값’으로 표시합니다.
+      공식 예상 승객 데이터 역시 실제 보안검색 대기시간을 보장하지 않으며, 항공편 운항시간·탑승구·출국장 운영·보안검색 대기열 등 당일 상황에 따라 실제 혼잡도와 소요시간은 달라질 수 있습니다.
       실제 체크인·수하물 위탁·탑승 마감시간은 이용 항공사의 공식 안내가 우선합니다.
     </div>
   </section>
@@ -273,7 +273,7 @@ const el = {
   form:$("form"), date:$("date"), time:$("time"), type:$("type"), airport:$("airport"),
   icnBox:$("icnBox"), zone:$("zone"), zoneHint:$("zoneHint"), smartpass:$("smartpass"),
   checkin:$("checkin"), bag:$("bag"), immigration:$("immigration"), immigrationWrap:$("immigrationWrap"),
-  crowd:$("crowd"), extra:$("extra"), transit:$("transit"), unfamiliar:$("unfamiliar"), family:$("family"),
+  crowd:$("crowd"), crowdHint:$("crowdHint"), extra:$("extra"), transit:$("transit"), unfamiliar:$("unfamiliar"), family:$("family"),
   results:$("results"), sourceName:$("sourceName"), sourceDetail:$("sourceDetail"), sourceBadge:$("sourceBadge"),
   tightTime:$("tightTime"), tightLead:$("tightLead"), recTime:$("recTime"), recLead:$("recLead"),
   safeTime:$("safeTime"), safeLead:$("safeLead"), judgement:$("judgement"), breakdown:$("breakdown"),
@@ -281,6 +281,14 @@ const el = {
 };
 
 const pad = n => String(n).padStart(2,"0");
+
+function apiConfigured(){
+  return typeof API_BASE === "string"
+    && /^https:\/\/.+\.workers\.dev\/?$/.test(API_BASE)
+    && !API_BASE.includes("YOUR-WORKER")
+    && !API_BASE.includes("YOUR-SUBDOMAIN");
+}
+
 const kstParts = () => {
   const parts = new Intl.DateTimeFormat("en-CA", {
     timeZone:"Asia/Seoul", year:"numeric", month:"2-digit", day:"2-digit"
@@ -334,7 +342,7 @@ async function fetchOfficialForecast(flight, zone, intl){
   if(!intl || el.airport.value!=="icn" || el.crowd.value!=="auto") return null;
   const diff=dateDiffFromKstToday(el.date.value);
   if(diff<0 || diff>1) return null;
-  if(API_BASE.includes("YOUR-WORKER")) return null;
+  if(!apiConfigured()) return null;
 
   const selectdate=String(diff);
   const securityAt=new Date(flight.getTime()-90*60000);
@@ -350,6 +358,13 @@ async function fetchOfficialForecast(flight, zone, intl){
 }
 function syncUI(){
   const isIcn=el.airport.value==="icn";
+  if(el.crowdHint){
+    if(apiConfigured()){
+      el.crowdHint.textContent="Worker 주소가 설정되어 있습니다. 인천공항 오늘·내일은 공식 API 조회를 시도하며, 조회 실패 시 자체 추정값으로 전환합니다.";
+    }else{
+      el.crowdHint.textContent="현재 공식 API가 연결되지 않았습니다. 혼잡도는 시간대·요일 기반 자체 추정값으로 계산됩니다.";
+    }
+  }
   el.icnBox.style.display=isIcn?"block":"none";
   el.immigrationWrap.style.display=el.type.value==="international"?"block":"none";
   const z=el.zone.value;
@@ -429,10 +444,15 @@ async function calculate(){
     el.sourceBadge.textContent="공식 API";
     el.sourceDetail.textContent=`예상 보안검색 진입 ${hm(crowdInfo.securityAt)} · ${crowdInfo.slot} 예상 출국객 ${crowdInfo.passengers.toLocaleString()}명 · 혼잡 판단 ${crowdInfo.label}`;
   }else{
-    el.sourceName.textContent="시간대·요일 기반 자체 추정";
-    el.sourceBadge.textContent="Fallback";
-    const err=apiError?` · 공식 API 사용 불가(${apiError.message})`:"";
-    el.sourceDetail.textContent=`예상 보안검색 진입 ${hm(crowdInfo.securityAt)} · ${crowdInfo.reason}${err}`;
+    el.sourceName.textContent="자체 추정값 · 시간대·요일 기반";
+    el.sourceBadge.textContent="자체 추정값";
+    let reasonSuffix="";
+    if(!apiConfigured() && el.airport.value==="icn" && el.crowd.value==="auto"){
+      reasonSuffix=" · 공식 API 미연결";
+    }else if(apiError){
+      reasonSuffix=` · 공식 API 조회 실패(${apiError.message})`;
+    }
+    el.sourceDetail.textContent=`예상 보안검색 진입 ${hm(crowdInfo.securityAt)} · ${crowdInfo.reason}${reasonSuffix}`;
   }
 
   const fastCase=intl&&el.checkin.value==="online"&&el.bag.value==="none"&&el.immigration.value==="auto"&&el.extra.value==="none"&&crowdInfo.mins<=20;
