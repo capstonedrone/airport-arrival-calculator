@@ -71,7 +71,7 @@
       <h1>공항 몇 시간 전 도착해야 할까?</h1>
       <div class="sub">출국 수속, 공항 동선, 혼잡 조건을 반영해 권장 도착시간을 계산합니다.</div>
     </div>
-    <div class="version">v00.00.07</div>
+    <div class="version">v00.00.08</div>
   </div>
 
   <div class="notice">
@@ -311,19 +311,20 @@ function fmt(dt, flight) {
 }
 function hm(dt){ return `${pad(dt.getHours())}:${pad(dt.getMinutes())}`; }
 
-function getDocumentHeight(){
-  return Math.max(
-    document.body ? document.body.scrollHeight : 0,
-    document.body ? document.body.offsetHeight : 0,
-    document.documentElement ? document.documentElement.scrollHeight : 0,
-    document.documentElement ? document.documentElement.offsetHeight : 0
-  );
+function getContentHeight(){
+  // Measure the calculator's actual content, not documentElement.scrollHeight.
+  // documentElement.scrollHeight can follow the iframe viewport height and
+  // create a resize feedback loop when embedded.
+  const wrap = document.querySelector(".wrap");
+  if(!wrap) return 900;
+  return Math.ceil(wrap.getBoundingClientRect().height);
 }
 let lastPostedHeight = 0;
 function postHeight(force=false){
   if(window.parent === window) return;
-  const height = Math.max(900, getDocumentHeight() + 24);
-  if(!force && Math.abs(height - lastPostedHeight) < 8) return;
+  const measured = getContentHeight();
+  const height = Math.max(900, Math.min(5000, measured + 8));
+  if(!force && Math.abs(height - lastPostedHeight) < 4) return;
   lastPostedHeight = height;
   window.parent.postMessage({
     source: "airport-arrival-calculator",
@@ -539,7 +540,8 @@ window.addEventListener("load", () => postHeight(true));
 window.addEventListener("resize", () => postHeight());
 document.addEventListener("input", () => postHeight());
 const resizeObserver = new ResizeObserver(() => postHeight());
-resizeObserver.observe(document.body);
+const observedWrap = document.querySelector(".wrap");
+if(observedWrap) resizeObserver.observe(observedWrap);
 syncUI();
 requestAnimationFrame(() => postHeight(true));
 </script>
